@@ -1,0 +1,90 @@
+import { AllocationRequest, WorkloadType } from '../../types/allocator';
+
+export class WorkloadGenerator {
+  private requestCounter = 0;
+
+  generateRequest(workloadType: WorkloadType): AllocationRequest {
+    this.requestCounter++;
+    const id = `req-${this.requestCounter}`;
+    const timestamp = Date.now();
+
+    switch (workloadType) {
+      case WorkloadType.RANDOM:
+        return {
+          id,
+          size: Math.floor(Math.random() * 1024) + 16,
+          timestamp,
+          duration: Math.floor(Math.random() * 5000) + 1000
+        };
+
+      case WorkloadType.UNIFORM_SMALL:
+        return {
+          id,
+          size: 32 + Math.floor(Math.random() * 32), // 32-64 bytes
+          timestamp,
+          duration: Math.floor(Math.random() * 2000) + 500
+        };
+
+      case WorkloadType.UNIFORM_LARGE:
+        return {
+          id,
+          size: 2048 + Math.floor(Math.random() * 2048), // 2-4KB
+          timestamp,
+          duration: Math.floor(Math.random() * 10000) + 2000
+        };
+
+      case WorkloadType.LIFO:
+        return {
+          id,
+          size: Math.floor(Math.random() * 512) + 64,
+          timestamp,
+          duration: 100 + Math.floor(Math.random() * 200) // Short-lived for LIFO pattern
+        };
+
+      case WorkloadType.SHORT_LIVED:
+        return {
+          id,
+          size: Math.floor(Math.random() * 256) + 32,
+          timestamp,
+          duration: Math.floor(Math.random() * 500) + 100 // Very short duration
+        };
+
+      case WorkloadType.LONG_LIVED:
+        return {
+          id,
+          size: Math.floor(Math.random() * 2048) + 256,
+          timestamp,
+          duration: Math.floor(Math.random() * 30000) + 10000 // Long duration
+        };
+
+      case WorkloadType.POWER_OF_TWO:
+        const powers = [16, 32, 64, 128, 256, 512, 1024, 2048];
+        return {
+          id,
+          size: powers[Math.floor(Math.random() * powers.length)],
+          timestamp,
+          duration: Math.floor(Math.random() * 3000) + 1000
+        };
+
+      default:
+        return {
+          id,
+          size: Math.floor(Math.random() * 512) + 64,
+          timestamp,
+          duration: Math.floor(Math.random() * 2000) + 1000
+        };
+    }
+  }
+
+  generateBurst(workloadType: WorkloadType, count: number = 10): AllocationRequest[] {
+    const requests: AllocationRequest[] = [];
+    for (let i = 0; i < count; i++) {
+      requests.push(this.generateRequest(workloadType));
+    }
+    return requests;
+  }
+
+  reset(): void {
+    this.requestCounter = 0;
+  }
+}
