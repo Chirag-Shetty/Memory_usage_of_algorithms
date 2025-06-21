@@ -44,7 +44,11 @@ export class SimulationEngine {
       workloadType: WorkloadType.RANDOM,
       selectedAllocator: AllocatorType.FREE_LIST,
       smartMode: true,
-      speed: 1
+      speed: 1,
+      demoMode: false,
+      currentDemoAllocator: null,
+      demoPhase: 'individual',
+      demoProgress: 0
     };
     
     // Initialize allocators last
@@ -137,8 +141,9 @@ export class SimulationEngine {
             if (success) {
               loggingService.logDeallocation(
                 type,
-                block,
-                endTime - startTime
+                requestId, // Pass the ID string instead of the block object
+                endTime - startTime,
+                block.address
               );
             }
           }
@@ -250,5 +255,101 @@ export class SimulationEngine {
 
   getAllocators(): Map<AllocatorType, BaseAllocator> {
     return new Map(this.allocators);
+  }
+
+  startSequentialDemo(workloadType: WorkloadType, operationCount: number): void {
+    // Reset all allocators first
+    this.reset();
+    
+    // Configure the demo
+    this.simulationState.demoMode = true;
+    this.simulationState.workloadType = workloadType;
+    this.simulationState.demoPhase = 'individual';
+    this.simulationState.demoProgress = 0;
+    this.simulationState.selectedAllocator = Object.values(AllocatorType)[0];
+    this.simulationState.currentDemoAllocator = this.simulationState.selectedAllocator;
+    
+    // Generate the identical workload sequence for all allocators
+    this.workloadGenerator.preGenerateWorkload(workloadType, operationCount);
+    
+    // Start the demo with first allocator
+    loggingService.logDemo(`Starting sequential demo with ${workloadType} workload`);
+    loggingService.logDemo(`Phase 1: Testing individual allocators`);
+    loggingService.logDemo(`Running ${this.simulationState.currentDemoAllocator} Allocator...`);
+    
+    // Start the simulation
+    this.start();
+  }
+
+  private demoResults: Map<AllocatorType, AllocatorMetrics> = new Map();
+
+  private advanceDemoSequence(): void {
+    if (!this.simulationState.demoMode) return;
+    
+    // Store metrics for current allocator
+    const currentMetrics = this.allocators.get(this.simulationState.currentDemoAllocator!)?.getMetrics();
+    this.demoResults.set(this.simulationState.currentDemoAllocator!, { ...currentMetrics! });
+    
+    // Get next allocator or move to smart phase
+    const allocatorTypes = Object.values(AllocatorType);
+    const currentIndex = allocatorTypes.indexOf(this.simulationState.currentDemoAllocator!);
+    
+    if (currentIndex < allocatorTypes.length - 1) {
+      // Move to next allocator
+      this.reset();
+      this.simulationState.currentDemoAllocator = allocatorTypes[currentIndex + 1];
+      this.simulationState.selectedAllocator = this.simulationState.currentDemoAllocator;
+      this.simulationState.demoProgress = (currentIndex + 1) / (allocatorTypes.length + 1) * 100;
+      
+      loggingService.logDemo(`Running ${this.simulationState.currentDemoAllocator} Allocator...`);
+      
+      // Restart with same workload
+      this.workloadGenerator.resetWorkload();
+      this.start();
+    } 
+    else if (this.simulationState.demoPhase === 'individual') {
+      // Move to smart phase
+      this.reset();
+      this.simulationState.demoPhase = 'smart';
+      this.simulationState.smartMode = true;
+      this.simulationState.demoProgress = (allocatorTypes.length) / (allocatorTypes.length + 1) * 100;
+      
+      loggingService.logDemo(`Phase 2: Testing SmartEdgeAlloc adaptive allocation`);
+      
+      // Restart with same workload
+      this.workloadGenerator.resetWorkload();
+      this.start();
+    }
+    else {
+      // Complete demo
+      this.simulationState.demoPhase = 'complete';
+      this.simulationState.demoProgress = 100;
+      this.simulationState.isRunning = false;
+      
+      // Generate final comparison
+      this.generateDemoComparison();
+      
+      loggingService.logDemo(`Demo complete. Final comparison results available.`);
+    }
+  }
+
+  private generateDemoComparison(): void {
+    // Create comparison table for logging
+    let comparisonTable = "\n=== ALLOCATOR PERFORMANCE COMPARISON ===\n";
+    comparisonTable += "Allocator      | Memory Usage | Fragmentation | Success Rate | Avg Alloc Time\n";
+    comparisonTable += "---------------|-------------|--------------|--------------|---------------\n";
+    
+    // Add each allocator's metrics to table
+    this.demoResults.forEach((metrics, allocator) => {
+      comparisonTable += `${allocator.padEnd(15)}| ${formatBytes(metrics.currentMemoryUsage).padEnd(13)}| ${metrics.fragmentation.toFixed(1).padEnd(14)}%| ${metrics.successRate.toFixed(1).padEnd(14)}%| ${metrics.averageAllocationTime.toFixed(3).padEnd(15)}ms\n`;
+    });
+    
+    // Log the comparison table
+    loggingService.logDemo(comparisonTable);
+  }
+
+  // Add this method
+  getDemoResults(): Map<AllocatorType, AllocatorMetrics> {
+    return new Map(this.demoResults);
   }
 }

@@ -1,161 +1,182 @@
 import { io, Socket } from 'socket.io-client';
 import { AllocatorType, AllocationBlock, AllocatorMetrics } from '../types/allocator';
-import { AllocatorScore } from '../core/simulation/SmartEdgeAlloc';
-import { formatESP32Address, formatBytes, ESP32_HEAP_SIZE } from '../constants/ESP32Constants';
+import { formatBytes } from '../constants/ESP32Constants';
 
 class LoggingService {
   private socket: Socket | null = null;
-  private connected: boolean = false;
-  private queue: any[] = [];
-  private logToConsole: boolean = true;
+  private outputChannels = {
+    console: true,
+    web: true,
+    esp32: false
+  };
+  
+  private esp32Status: { connected: boolean; port: string | null } = {
+    connected: false,
+    port: null
+  };
 
   constructor() {
-    this.connect();
-  }
-
-  private connect(): void {
-    try {
-      // Configure socket with reconnection options
-      this.socket = io('http://localhost:3001', {
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 20000
-      });
-      
+    this.socket = io('http://localhost:3001');
+    
+    if (this.socket) { // Add this null check
       this.socket.on('connect', () => {
-        this.connected = true;
         console.log('Connected to logging server');
         
-        // Send any queued logs
-        if (this.queue.length > 0) {
-          this.queue.forEach(log => this.socket?.emit('simulation-log', log));
-          this.queue = [];
+        // Request ESP32 status after connection
+        if (this.socket) {
+          this.socket.on('esp32-status', (status) => {
+            this.esp32Status = status;
+            this.outputChannels.esp32 = status.connected;
+            console.log(`ESP32 status updated: ${status.connected ? 'Connected' : 'Disconnected'}`);
+          });
         }
       });
-
-      this.socket.on('connect_error', (error) => {
-        console.error('Connection error:', error);
-      });
-
-      this.socket.on('disconnect', (reason) => {
-        this.connected = false;
-        console.log('Disconnected from logging server:', reason);
-        
-        // If the disconnection was initiated by the server, try to reconnect
-        if (reason === 'io server disconnect') {
-          this.socket?.connect();
-        }
-      });
-    } catch (error) {
-      console.error('Failed to connect to logging server:', error);
-      this.connected = false;
     }
   }
-
-  private sendLog(logData: any): void {
-    if (this.logToConsole) {
-      console.log('[Simulation]', logData);
+  
+  setOutputChannels(channels: {console?: boolean, web?: boolean, esp32?: boolean}): void {
+    if (channels.console !== undefined) this.outputChannels.console = channels.console;
+    if (channels.web !== undefined) this.outputChannels.web = channels.web;
+    if (channels.esp32 !== undefined) this.outputChannels.esp32 = channels.esp32;
+  }
+  
+  private formatESP32Address(address: number): string {
+    return `0x${address.toString(16).padStart(8, '0')}`;
+  }
+  
+  private getTimestamp(): string {
+    return new Date().toISOString().split('T')[1].split('.')[0];
+  }
+  
+  private multiChannelLog(message: string): void {
+    // Send to all enabled channels
+    if (this.outputChannels.console) {
+      console.log(message);
     }
     
-    if (this.connected && this.socket) {
-      this.socket.emit('simulation-log', logData);
-    } else {
-      // Queue the log for when we reconnect
-      this.queue.push(logData);
+    if (this.outputChannels.web && this.socket) {
+      this.socket.emit('simulation-log', { message });
     }
+    
+    // Removed direct serialport usage
   }
-
-  logAllocation(
-    allocator: AllocatorType, 
-    block: AllocationBlock, 
-    time: number, 
-    fragmentation: number,
-    usedMemory: number
-  ): void {
-    this.sendLog({
-      type: 'allocation',
-      allocator,
-      id: block.id,
-      size: block.size,
-      address: block.address,
-      time,
-      fragmentation,
-      used: usedMemory,
-      message: `[${this.getTimestamp()}][I][ALLOC][${allocator}] Alloc ${block.size} bytes @ ${formatESP32Address(block.address)} | Time: ${time.toFixed(3)}ms | Heap: ${formatBytes(usedMemory)}/${formatBytes(ESP32_HEAP_SIZE)} (${(usedMemory/ESP32_HEAP_SIZE*100).toFixed(1)}%) | Frag: ${fragmentation.toFixed(1)}%`
-    });
-  }
-
-  logDeallocation(allocator: AllocatorType, block: AllocationBlock, time: number): void {
-    this.sendLog({
-      type: 'deallocation',
-      allocator,
-      id: block.id,
-      address: block.address,
-      size: block.size,
-      time
-    });
-  }
-
-  logRecommendation(score: AllocatorScore): void {
-    this.sendLog({
-      type: 'recommendation',
-      allocator: score.allocator,
-      score: score.score,
-      reason: score.reasoning[0]
-    });
-  }
-
-  logMetrics(allocator: AllocatorType, metrics: AllocatorMetrics): void {
-    this.sendLog({
-      type: 'metrics',
-      allocator,
-      used: metrics.currentMemoryUsage,
-      // Fix: Replace metrics.totalMemory with the constant value or metrics.wastedSpace
-      free: 1024 * 1024 - metrics.currentMemoryUsage, // Assuming 1MB total memory
-      fragmentation: metrics.fragmentation,
-      successRate: metrics.successRate
-    });
-  }
-
-  logEvent(message: string): void {
-    this.sendLog({
-      type: 'event',
-      message
-    });
-  }
-
+  
   logBoot(message: string): void {
-    this.sendLog({
-      type: 'boot',
-      message
-    });
+    const formatted = `[${this.getTimestamp()}][I][BOOT] ${message}`;
+    this.multiChannelLog(formatted);
   }
-
-  logError(allocator: AllocatorType, message: string): void {
-    this.sendLog({
-      type: 'error',
-      allocator,
-      message
-    });
-  }
-
-  // This should be called when the app is closing/changing routes
-  disconnect(): void {
+  
+  logAllocation(allocator: AllocatorType, block: AllocationBlock, time: number, fragmentation: number, usedMemory: number): void {
+    const formatted = `[${this.getTimestamp()}][I][ALLOC][${allocator}] Allocated ${formatBytes(block.size)} at ${this.formatESP32Address(block.address)} (Time: ${time.toFixed(3)}ms, Fragmentation: ${fragmentation.toFixed(1)}%, Heap: ${formatBytes(usedMemory)})`;
+    this.multiChannelLog(formatted);
+    
     if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
+      this.socket.emit('simulation-log', { 
+        type: 'allocation',
+        allocator,
+        id: block.id,
+        size: block.size,
+        address: block.address,
+        time,
+        fragmentation,
+        usedMemory
+      });
+    }
+  }
+  
+  logDeallocation(allocator: AllocatorType, blockId: string, address: number, time: number): void {
+    const formatted = `[${this.getTimestamp()}][I][FREE][${allocator}] Freed block ${blockId} at ${this.formatESP32Address(address)} (Time: ${time.toFixed(3)}ms)`;
+    this.multiChannelLog(formatted);
+    
+    if (this.socket) {
+      this.socket.emit('simulation-log', { 
+        type: 'deallocation',
+        allocator,
+        id: blockId,
+        address,
+        time
+      });
+    }
+  }
+  
+  logRecommendation(recommendation: { allocator: AllocatorType, score: number, reasoning: string[] }): void {
+    const formatted = `[${this.getTimestamp()}][S][SMART][EdgeAlloc] Recommended: ${recommendation.allocator} (Score: ${(recommendation.score * 100).toFixed(0)}%, Reason: ${recommendation.reasoning[0]})`;
+    this.multiChannelLog(formatted);
+    
+    if (this.socket) {
+      this.socket.emit('simulation-log', {
+        type: 'recommendation',
+        allocator: recommendation.allocator,
+        score: recommendation.score,
+        reason: recommendation.reasoning[0]
+      });
+    }
+  }
+  
+  logEvent(message: string): void {
+    const formatted = `[${this.getTimestamp()}][I][EVENT] ${message}`;
+    this.multiChannelLog(formatted);
+    
+    if (this.socket) {
+      this.socket.emit('simulation-log', { 
+        type: 'event',
+        message
+      });
+    }
+  }
+  
+  logMetrics(allocator: AllocatorType, metrics: AllocatorMetrics): void {
+    const formatted = `[${this.getTimestamp()}][I][METRICS][${allocator}] Memory: ${formatBytes(metrics.currentMemoryUsage)}/${formatBytes(metrics.peakMemoryUsage)}, Frag: ${metrics.fragmentation.toFixed(1)}%, Success: ${metrics.successRate.toFixed(1)}%`;
+    this.multiChannelLog(formatted);
+    
+    if (this.socket) {
+      this.socket.emit('simulation-log', { 
+        type: 'metrics',
+        allocator,
+        metrics
+      });
+    }
+  }
+  
+  logDemo(message: string): void {
+    const formatted = `[${this.getTimestamp()}][D][DEMO] ${message}`;
+    this.multiChannelLog(formatted);
+    
+    if (this.socket) {
+      this.socket.emit('simulation-log', {
+        type: 'demo',
+        message
+      });
+    }
+  }
+  
+  logComparison(comparisonTable: string): void {
+    const formatted = `[${this.getTimestamp()}][D][COMPARISON] ${comparisonTable}`;
+    this.multiChannelLog(formatted);
+    
+    if (this.socket) {
+      this.socket.emit('simulation-log', {
+        type: 'comparison',
+        table: comparisonTable
+      });
     }
   }
 
-  // Add getTimestamp helper
-  private getTimestamp(): string {
-    const now = new Date();
-    return now.toISOString().split('T')[1].split('Z')[0];
+  getESP32Status(): { connected: boolean; port: string | null } {
+    return { ...this.esp32Status };
+  }
+
+  connectToESP32(port: string): void {
+    if (this.socket) {
+      this.socket.emit('connect-esp32', { port });
+    }
+  }
+
+  disconnectFromESP32(): void {
+    if (this.socket) {
+      this.socket.emit('disconnect-esp32');
+    }
   }
 }
 
-// Create a singleton instance
-const loggingServiceInstance = new LoggingService();
-export { loggingServiceInstance as loggingService };
+export const loggingService = new LoggingService();

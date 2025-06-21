@@ -1,36 +1,42 @@
-import React from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 
-interface ErrorBoundaryState {
-  hasError: boolean;
-  error?: Error;
+interface Props {
+  children: ReactNode;
 }
 
-export class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, ErrorBoundaryState> {
-  constructor(props: React.PropsWithChildren<{}>) {
+interface State {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
-  render() {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    console.error("React error:", error, errorInfo);
+  }
+
+  render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-gray-950 text-white p-8">
-          <h1 className="text-2xl font-bold text-red-400 mb-4">Something went wrong</h1>
-          <div className="bg-gray-900 p-4 rounded-lg">
-            <pre className="text-sm overflow-auto max-h-96">
-              {this.state.error?.message}
-              {this.state.error?.stack}
-            </pre>
-          </div>
-          <button 
-            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-white"
-            onClick={() => window.location.reload()}
+        <div className="p-8 bg-red-900 text-white rounded-lg">
+          <h2 className="text-xl font-bold mb-4">Something went wrong</h2>
+          <details className="bg-red-950 p-4 rounded">
+            <summary className="cursor-pointer">Error details</summary>
+            <pre className="mt-2 text-sm">{this.state.error?.toString()}</pre>
+          </details>
+          <button
+            className="mt-4 px-4 py-2 bg-red-700 rounded hover:bg-red-600"
+            onClick={() => this.setState({ hasError: false })}
           >
-            Reload Page
+            Try again
           </button>
         </div>
       );
@@ -39,3 +45,5 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, 
     return this.props.children;
   }
 }
+
+export default ErrorBoundary;

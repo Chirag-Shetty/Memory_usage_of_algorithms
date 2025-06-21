@@ -52,4 +52,8 @@ export interface SimulationState {
   selectedAllocator: AllocatorType;
   smartMode: boolean;
   speed: number;
+  demoMode: boolean;
+  currentDemoAllocator: AllocatorType | null;
+  demoPhase: 'individual' | 'smart' | 'complete';
+  demoProgress: number;
 }

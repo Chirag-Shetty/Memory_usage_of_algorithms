@@ -2,6 +2,9 @@ import { AllocationRequest, WorkloadType } from '../../types/allocator';
 
 export class WorkloadGenerator {
   private requestCounter = 0;
+  private preGeneratedWorkload: AllocationRequest[] = [];
+  private workloadIndex: number = 0;
+  private isUsingPregenerated: boolean = false;
 
   generateRequest(workloadType: WorkloadType): AllocationRequest {
     this.requestCounter++;
@@ -82,6 +85,40 @@ export class WorkloadGenerator {
       requests.push(this.generateRequest(workloadType));
     }
     return requests;
+  }
+
+  preGenerateWorkload(workloadType: WorkloadType, count: number): void {
+    this.preGeneratedWorkload = [];
+    this.workloadIndex = 0;
+
+    for (let i = 0; i < count; i++) {
+      const request = this.generateRequest(workloadType);
+      this.preGeneratedWorkload.push(request);
+    }
+
+    this.isUsingPregenerated = true;
+  }
+
+  resetWorkload(): void {
+    this.workloadIndex = 0;
+  }
+
+  generate(workloadType: WorkloadType): AllocationRequest {
+    if (this.isUsingPregenerated) {
+      if (this.workloadIndex >= this.preGeneratedWorkload.length) {
+        // Instead of returning null, create a fallback request
+        return {
+          id: `fallback-${Date.now()}`,
+          size: 16, // Small default size
+          timestamp: Date.now(),
+          duration: 100 // Short duration
+        };
+      }
+
+      return this.preGeneratedWorkload[this.workloadIndex++];
+    } else {
+      return this.generateRequest(workloadType);
+    }
   }
 
   reset(): void {
