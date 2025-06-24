@@ -5,7 +5,8 @@ import DashboardPage from './pages/DashboardPage';
 import AllocatorsPage from './pages/AllocatorsPage';
 import PerformancePage from './pages/PerformancePage';
 import SettingsPage from './pages/SettingsPage';
-import  ErrorBoundary  from './components/ErrorBoundary';
+import BenchmarkPage from './pages/BenchmarkPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import { useSimulation } from './hooks/useSimulation';
 import { AllocatorType, WorkloadType, SimulationState } from './types/allocator';
 import './index.css';
@@ -39,6 +40,9 @@ function App() {
     setSpeed,
     getCurrentAllocator
   } = useSimulation();
+
+  // Get the engine instance
+  const simulationEngine = useSimulation().engine;
 
   const [appSimulationState, setAppSimulationState] = useState<SimulationState>(defaultSimulationState);
   const [appMetrics, setAppMetrics] = useState(new Map());
@@ -92,6 +96,14 @@ function App() {
             <Route 
               path="/settings" 
               element={<SettingsPage onReset={reset} />} 
+            />
+            <Route 
+              path="/benchmark" 
+              element={
+                <BenchmarkPage 
+                  simulationEngine={simulationEngine} 
+                />
+              } 
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

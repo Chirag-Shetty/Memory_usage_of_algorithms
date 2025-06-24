@@ -67,6 +67,8 @@ export const useSimulation = () => {
     setSmartMode,
     setSpeed,
     getCurrentAllocator: () => engine.getCurrentAllocator(),
-    getAllocators: () => engine.getAllocators()
+    getAllocators: () => engine.getAllocators(),
+    setFastBenchmarkMode: (enabled: boolean) => engine.setFastBenchmarkMode(enabled),
+    engine
   };
 };

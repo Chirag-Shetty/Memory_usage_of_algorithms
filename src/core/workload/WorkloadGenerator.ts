@@ -87,16 +87,74 @@ export class WorkloadGenerator {
     return requests;
   }
 
+  // Pre-generate a consistent workload for benchmark testing
   preGenerateWorkload(workloadType: WorkloadType, count: number): void {
     this.preGeneratedWorkload = [];
     this.workloadIndex = 0;
-
+    this.isUsingPregenerated = true;
+    
+    // Generate realistic workload based on pattern
     for (let i = 0; i < count; i++) {
-      const request = this.generateRequest(workloadType);
+      // Create allocation with realistic size and duration
+      const size = this.getRequestSize(workloadType);
+      const duration = this.getRequestDuration(workloadType);
+      
+      const request: AllocationRequest = {
+        id: `benchmark-${i}`,
+        size: size,
+        timestamp: Date.now() + i * 10, // Spread out timestamps
+        duration: duration
+      };
+      
       this.preGeneratedWorkload.push(request);
     }
+    
+    console.log(`Pre-generated ${count} operations for benchmark with ${workloadType} pattern`);
+  }
 
-    this.isUsingPregenerated = true;
+  private getRequestSize(workloadType: WorkloadType): number {
+    // Generate realistic sizes based on workload type
+    switch (workloadType) {
+      case WorkloadType.UNIFORM_SMALL:
+        return 16 + Math.floor(Math.random() * 48); // 16-64 bytes
+        
+      case WorkloadType.UNIFORM_LARGE:
+        return 1024 + Math.floor(Math.random() * 3072); // 1KB-4KB
+        
+      case WorkloadType.POWER_OF_TWO:
+        const powers = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
+        return powers[Math.floor(Math.random() * powers.length)];
+        
+      case WorkloadType.LIFO:
+      case WorkloadType.SHORT_LIVED:
+      case WorkloadType.LONG_LIVED:
+      case WorkloadType.RANDOM:
+      default:
+        // Exponential distribution - many small, few large
+        return Math.min(16 + Math.floor(Math.random() * Math.random() * 4080), 4096);
+    }
+  }
+
+  private getRequestDuration(workloadType: WorkloadType): number | undefined {
+    // Generate realistic durations based on workload type
+    switch (workloadType) {
+      case WorkloadType.SHORT_LIVED:
+        return 100 + Math.floor(Math.random() * 900); // 100-1000ms
+        
+      case WorkloadType.LONG_LIVED:
+        return 5000 + Math.floor(Math.random() * 5000); // 5-10 seconds
+        
+      case WorkloadType.LIFO:
+        // LIFO allocations should be deallocated in reverse order
+        // So later allocations have shorter durations
+        return 2000 - this.workloadIndex * (2000 / this.preGeneratedWorkload.length || 1);
+        
+      default:
+        // Mix of durations, some null (manual deallocation)
+        return Math.random() < 0.7 ? 
+          500 + Math.floor(Math.random() * 2500) : // 500-3000ms 
+          undefined; // Some allocations won't auto-deallocate
+    }
   }
 
   resetWorkload(): void {
@@ -123,5 +181,39 @@ export class WorkloadGenerator {
 
   reset(): void {
     this.requestCounter = 0;
+  }
+
+  // Check if there are more operations in the sequence
+  hasMoreOperations(): boolean {
+    return this.isUsingPregenerated && this.workloadIndex < this.preGeneratedWorkload.length;
+  }
+
+  // Get the next pre-generated operation
+  getNextOperation(): AllocationRequest {
+    if (!this.isUsingPregenerated || this.workloadIndex >= this.preGeneratedWorkload.length) {
+      // Fallback to random if no more pre-generated operations
+      return this.generateRequest(WorkloadType.RANDOM);
+    }
+
+    const request = this.preGeneratedWorkload[this.workloadIndex++];
+    return request;
+  }
+
+  // Calculate progress percentage through the workload
+  getProgressPercentage(): number {
+    if (!this.isUsingPregenerated || this.preGeneratedWorkload.length === 0) {
+      return 0;
+    }
+    return Math.min(1, this.workloadIndex / this.preGeneratedWorkload.length);
+  }
+
+  // Add this method
+  getCurrentRequest(): AllocationRequest | null {
+    if (!this.isUsingPregenerated || this.workloadIndex <= 0 || this.workloadIndex > this.preGeneratedWorkload.length) {
+      return null;
+    }
+    
+    // Return the last processed request
+    return this.preGeneratedWorkload[this.workloadIndex - 1];
   }
 }

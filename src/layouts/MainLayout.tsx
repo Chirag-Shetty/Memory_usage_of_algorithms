@@ -1,6 +1,15 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Cpu, BarChart2, Settings, Home, Layers, Menu, X } from 'lucide-react';
+import { 
+  Home, // Replace Dashboard with Home
+  Cpu, 
+  BarChart2, 
+  Settings, 
+  Trophy, 
+  Menu, // Add this import
+  Layers, // Add this import
+  X // Add this import for close button
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface MainLayoutProps {
@@ -12,9 +21,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const location = useLocation();
   
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: <Home size={20} /> },
+    { path: '/', label: 'Dashboard', icon: <Home size={20} /> }, // Changed from Dashboard to Home
     { path: '/allocators', label: 'Allocators', icon: <Cpu size={20} /> },
     { path: '/performance', label: 'Performance', icon: <BarChart2 size={20} /> },
+    { path: '/benchmark', label: 'Benchmark Suite', icon: <Trophy size={20} /> },
     { path: '/settings', label: 'Settings', icon: <Settings size={20} /> },
   ];
 

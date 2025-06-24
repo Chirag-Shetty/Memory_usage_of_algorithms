@@ -5,7 +5,8 @@ export enum AllocatorType {
   FREE_LIST = 'Free List',
   RB_TREE = 'RB Tree',
   BUDDY = 'Buddy',
-  C_ALLOCATOR = 'C Allocator'
+  C_ALLOCATOR = 'C Allocator',
+  SMART_EDGE_ALLOC = 'SmartEdgeAlloc'
 }
 
 export enum WorkloadType {

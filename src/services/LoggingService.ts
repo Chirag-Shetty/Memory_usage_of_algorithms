@@ -177,6 +177,19 @@ class LoggingService {
       this.socket.emit('disconnect-esp32');
     }
   }
+
+  logError(allocator: AllocatorType, message: string): void {
+    const formatted = `[${this.getTimestamp()}][E][ERROR][${allocator}] ${message}`;
+    this.multiChannelLog(formatted);
+    
+    if (this.socket) {
+      this.socket.emit('simulation-log', { 
+        type: 'error',
+        allocator,
+        message
+      });
+    }
+  }
 }
 
 export const loggingService = new LoggingService();
